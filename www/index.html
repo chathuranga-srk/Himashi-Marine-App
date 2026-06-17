@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Himashi Marine - Lashing Hub</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#f25c05">
+    <link rel="apple-touch-icon" href="icon-512.png">
+
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 10px; }
+        
+        #preloader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #ffffff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.8s ease-in-out, visibility 0.8s; }
+        .loader-logo { max-width: 90px; margin-bottom: 25px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.15); opacity: 0; transform: scale(0.8); animation: smoothZoomIn 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards; }
+        .loader-text { font-size: 22px; font-weight: 800; color: #1b5e20; opacity: 0; animation: fadeUp 1s ease-out 0.5s forwards; margin-bottom: 5px; }
+        .loader-subtext { font-size: 12px; color: #7f8c8d; opacity: 0; animation: fadeUp 1s ease-out 0.7s forwards; margin-bottom: 25px; text-transform: uppercase; letter-spacing: 2px; }
+        .spinner { border: 3px solid rgba(242, 92, 5, 0.2); border-top: 3px solid #f25c05; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite; opacity: 0; animation-fill-mode: forwards; animation-delay: 1s; }
+
+        @keyframes smoothZoomIn { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+        @keyframes fadeUp { 0% { opacity: 0; transform: translateY(15px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { 0% { transform: rotate(0deg); opacity: 1; } 100% { transform: rotate(360deg); opacity: 1; } }
+        
+        #landing-view, #map-view, #sheet-view, #history-view, #supervisor-view, #form-view { display: none; }
+        #landing-view.active, #map-view.active, #sheet-view.active, #history-view.active, #supervisor-view.active, #form-view.active { display: block; animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .hub-container { max-width: 400px; margin: 30px auto; background: #fff; padding: 25px 20px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); text-align: center; border-top: 6px solid #f25c05; }
+        .hub-title { color: #333; margin-bottom: 5px; font-size: 24px; }
+        .hub-subtitle { color: #777; font-size: 14px; margin-bottom: 25px; }
+        .btn-hub { display: block; width: 100%; padding: 15px; margin-bottom: 12px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; color: #fff; cursor: pointer; box-sizing: border-box; text-decoration: none; transition: transform 0.2s; text-align: center; }
+        .btn-hub:active { transform: scale(0.98); }
+        .btn-worker { background: #333; }
+        .btn-radar { background: #1e88e5; }
+        .btn-sheet-view { background: #43a047; }
+        .btn-form-view { background: #8e44ad; }
+        
+        .worker-resume-gps { border-top: 2px dashed #eee; margin-top: 20px; padding-top: 15px; display: none; }
+        .btn-gps-persisting { background: #e53935; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(229, 57, 53, 0); } 100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); } }
+
+        .login-box { margin-top: 25px; padding-top: 20px; border-top: 2px dashed #eee; }
+        .login-input { width: 100%; padding: 12px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; text-align: center; box-sizing: border-box; letter-spacing: 2px; }
+        .btn-login { background: #f25c05; width: 100%; margin-top: 5px; }
+
+        .view-header { display: flex; justify-content: space-between; align-items: center; max-width: 800px; margin: 0 auto 15px auto; padding: 10px 15px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-back { background: #333; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        .sheet-grid { display: flex; flex-direction: column; gap: 15px; max-width: 800px; margin: 0 auto; padding-bottom: 30px; }
+        .sheet-qc-card { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden; border-left: 6px solid gray; }
+        .sheet-qc-header { padding: 10px 15px; color: white; font-weight: bold; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+        .sheet-worker-tag { background: #fff; padding: 8px 12px; border-radius: 6px; font-weight: bold; font-size: 13px; color: #333; display: flex; align-items: center; gap: 6px; border: 1px solid #e0e0e0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box; }
+        .sheet-no-workers { font-size: 13px; color: #999; font-style: italic; padding: 5px 10px; width: 100%; text-align: center; }
+
+        .history-controls { margin-bottom: 20px; display: flex; gap: 10px; flex-direction: column; align-items: center; }
+        .history-input { padding: 10px; border: 2px solid #ccc; border-radius: 5px; font-weight: bold; }
+        .btn-hist-get { background: #f25c05; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        #radarMap { height: 75vh; width: 100%; max-width: 800px; margin: 0 auto; border-radius: 8px; border: 3px solid #333; z-index: 1; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .custom-pin-wrap { overflow: visible !important; }
+        .custom-pin { border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 5px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; color: white; text-shadow: 1px 1px 2px #000; margin: 0 auto; }
+        .btn-call, .btn-wa { display: inline-block; padding: 6px 12px; border-radius: 5px; text-decoration: none; margin: 5px; color: white !important; font-weight: bold; }
+        .btn-call { background: #1e88e5; } .btn-wa { background: #25D366; }
+
+        /* The Vertical Ship Marker Hack */
+        .vessel-pin-vertical { background: #7cb342; border: 2px solid #33691e; color: white; font-weight: bold; font-size: 12px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.4); white-space: nowrap; position: relative; width: 40px; height: 250px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; 
+            clip-path: polygon(50% 0%, 100% 10%, 100% 90%, 50% 100%, 0% 90%, 0% 10%); }
+        .vessel-pin-text { position: absolute; transform: rotate(-90deg); white-space: nowrap; font-size: 13px; text-shadow: 1px 1px 2px #000; }
+
+        .live-badge { background: #ffeb3b; color: #000; padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .box-section { background: #fff; padding: 12px; border-radius: 8px; max-width: 800px; margin: 0 auto 15px auto; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #e0e0e0; }
+        h3.section-title { color: #333; margin-top: 0; border-left: 4px solid #f25c05; padding-left: 8px; margin-bottom: 15px; font-size: 16px; }
+        
+        .shift-select, .ship-input, .form-input { padding: 8px; font-size: 14px; border-radius: 5px; border: 2px solid #ccc; color: #333; width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+        .shift-select { border-color: #f25c05; font-weight: bold; }
+        #reader { width: 100%; max-width: 400px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 2px solid #ccc; }
+        
+        .board { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 20px; max-width: 800px; margin-left: auto; margin-right: auto; }
+        .column-standby { flex: 1 1 100%; background: #fff; border-radius: 8px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-top: 4px solid gray; }
+        .column-qc { flex: 1 1 45%; min-width: 150px; background: #fff; border-radius: 8px; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .column-standby h3, .column-qc h3 { text-align: center; color: #333; margin: 0 0 8px 0; font-size: 14px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        .list { min-height: 100px; padding: 5px; background: #f9f9f9; border-radius: 5px; border: 2px dashed #ccc; transition: background 0.3s; }
+        .list.drag-over { background: #e0f2f1; border-color: #009688; }
+        
+        .worker { background: #fff; padding: 6px; margin-bottom: 5px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: grab; border-left: 4px solid gray; color: #444; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .worker:active { cursor: grabbing; opacity: 0.8; }
+        .w-info { flex: 1; display: flex; flex-direction: column; }
+        .w-name { font-weight: bold; }
+        .w-time { font-size: 10px; color: #888; margin-top: 2px; }
+        .role-btn { background: #eee; border: 1px solid #ccc; border-radius: 4px; padding: 4px 6px; cursor: pointer; font-size: 14px; margin-right: 5px; }
+        .q-num { background: #333; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
+        
+        .eq-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .eq-controls { display: flex; gap: 10px; align-items: center; }
+        .btn-qty { background: #f25c05; color: white; border: none; width: 25px; height: 25px; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .eq-val { width: 30px; text-align: center; font-size: 14px; font-weight: bold; border: none; background: transparent; }
+        
+        #silentAudio { display: none; }
+
+        #printable-form { display: none; width: 800px; padding: 40px; background: white; color: #000; font-family: 'Times New Roman', Times, serif; }
+        .pdf-header { background: #689f38; color: white; text-align: center; padding: 10px; font-weight: bold; font-size: 18px; margin-bottom: 10px; }
+        .pdf-subheader { text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 20px; }
+        .pdf-section-title { background: #c5e1a5; padding: 5px; font-weight: bold; font-size: 14px; border: 1px solid #000; margin-top: -1px; }
+        .pdf-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+        .pdf-table td { border: 1px solid #000; padding: 8px; font-size: 14px; vertical-align: top; }
+        .pdf-label { font-weight: bold; font-size: 12px; display: block; margin-bottom: 5px; }
+        .pdf-val { font-size: 14px; font-weight: bold; text-transform: uppercase; }
+        .pdf-photo-box { width: 120px; height: 150px; border: 1px solid #ccc; text-align: center; line-height: 150px; color: #999; margin: 10px auto; }
+    </style>
+</head>
+<body onload="checkWorkerPersistence()">
+
+    <div id="preloader">
+        <img src="icon-192.png" alt="Himashi Logo" class="loader-logo">
+        <div class="loader-text">HIMASHI MARINE</div>
+        <p class="loader-subtext">Terminal Operating System</p>
+        <div class="spinner"></div>
+    </div>
+
+    <audio id="silentAudio" loop>
+        <source src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU2LjM2LjEwMAAAAAAAAAAAAAAA//MUxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MUxBAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" type="audio/mpeg">
+    </audio>
+
+    <div id="landing-view" class="active">
+        <div class="hub-container">
+            <img src="icon-192.png" alt="Himashi Logo" style="max-width: 80px; border-radius: 12px; margin-bottom: 15px;">
+            <h1 class="hub-title">🚢 Himashi Marine</h1>
+            <p class="hub-subtitle">Lashing & Logistics Portal</p>
+            <a href="worker.html" class="btn-hub btn-worker">👷 සේවක පිවිසුම (Register)</a>
+            <div id="persisting-identity-check" class="worker-resume-gps">
+                <p style="font-size:12px; font-weight:bold; color:#444;">Hello <span id="saved-worker-name" style="color:#f25c05;"></span>!</p>
+                <button class="btn-hub btn-gps-persisting" id="btnResumeGps" onclick="startTrackingPersistedWorker()">🔴 Start Shift (Active GPS)</button>
+            </div>
+            <button class="btn-hub btn-sheet-view" onclick="switchView('sheet-view')">📋 සජීවී සේවක ලේඛනය (Gang Sheet)</button>
+            <button class="btn-hub btn-radar" onclick="switchView('map-view')">🛰️ සජීවී සිතියම (Live Radar)</button>
+            <button class="btn-hub btn-form-view" onclick="switchView('form-view')">📝 Employee Data Form</button>
+            <div class="login-box">
+                <p style="font-weight: bold; color: #555; margin-bottom: 10px; font-size: 14px;">🔒 SUPERVISOR LOGIN</p>
+                <input type="password" id="sup-pin" class="login-input" placeholder="Enter PIN">
+                <button class="btn-hub btn-login" onclick="loginSupervisor()">Log In</button>
+                <p id="login-err" style="color: red; font-size: 13px; display: none;">❌ PIN එක වැරදියි!</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="form-view">
+        <div class="view-header" style="max-width: 800px;"><button class="btn-back" onclick="switchView('landing-view')">⬅ Hub</button><h3 style="margin:0; color:#333;">📝 Employee Data Entry</h3><div></div></div>
+        <div class="box-section">
+            <input type="text" id="i_fullName" class="form-input" placeholder="Full Name"><input type="text" id="i_initials" class="form-input" placeholder="Name with Initials"><div style="display:flex; gap:10px;"><input type="text" id="i_nic" class="form-input" placeholder="NIC No"><select id="i_gender" class="form-input"><option value="MALE">Male</option><option value="FEMALE">Female</option></select></div><input type="text" id="i_address" class="form-input" placeholder="Address"><div style="display:flex; gap:10px;"><input type="text" id="i_town" class="form-input" placeholder="Town"><input type="text" id="i_district" class="form-input" placeholder="District"></div><div style="display:flex; gap:10px;"><input type="date" id="i_dob" class="form-input"><input type="text" id="i_birthplace" class="form-input" placeholder="Birthplace"></div><div style="display:flex; gap:10px;"><input type="number" id="i_contact" class="form-input" placeholder="Contact No"><input type="text" id="i_bank" class="form-input" placeholder="Bank Account No"></div>
+            <h4 style="margin: 15px 0 5px 0;">Details for EPF</h4><div style="display:flex; gap:10px;"><input type="text" id="i_father" class="form-input" placeholder="Father's Name"><input type="text" id="i_mother" class="form-input" placeholder="Mother's Name"></div><div style="display:flex; gap:10px;"><select id="i_civil" class="form-input"><option value="SINGLE">Single</option><option value="MARRIED">Married</option></select><input type="text" id="i_wife" class="form-input" placeholder="Wife's Name (if any)"></div><input type="text" id="i_nominee" class="form-input" placeholder="Name of Nominee for EPF"><div style="display:flex; gap:10px;"><input type="text" id="i_relation" class="form-input" placeholder="Relationship"><input type="text" id="i_nomic" class="form-input" placeholder="Nominee NIC"></div>
+            <button class="btn-hub" style="background: #e53935; margin-top: 15px;" onclick="generateEmployeePDF()">📥 Generate & Download PDF Form</button>
+        </div>
+    </div>
+
+    <div id="printable-form">
+        <div class="pdf-header">HIMASHI MARINE SERVICE (PVT) LTD – HAMBANTOTA</div><div class="pdf-subheader">EMPLOYEE DATA FORM</div>
+        <div class="pdf-section-title">TO BE FILLED-OUT BY EMPLOYEE – PLEASE FILL IN CAPITAL LETTERS</div>
+        <table class="pdf-table">
+            <tr><td colspan="2"><span class="pdf-label">FULL NAME</span><span class="pdf-val" id="p_fullName"></span></td></tr><tr><td colspan="2"><span class="pdf-label">NAME WITH INITIALS</span><span class="pdf-val" id="p_initials"></span></td></tr><tr><td width="50%"><span class="pdf-label">NIC NO</span><span class="pdf-val" id="p_nic"></span></td><td width="50%"><span class="pdf-label">GENDER</span><span class="pdf-val" id="p_gender"></span></td></tr><tr><td colspan="2"><span class="pdf-label">ADDRESS</span><span class="pdf-val" id="p_address"></span></td></tr><tr><td><span class="pdf-label">TOWN</span><span class="pdf-val" id="p_town"></span></td><td><span class="pdf-label">DISTRICT</span><span class="pdf-val" id="p_district"></span></td></tr><tr><td><span class="pdf-label">DATE OF BIRTH</span><span class="pdf-val" id="p_dob"></span></td><td><span class="pdf-label">BIRTHPLACE</span><span class="pdf-val" id="p_birthplace"></span></td></tr><tr><td><span class="pdf-label">CONTACT NO</span><span class="pdf-val" id="p_contact"></span></td><td><span class="pdf-label">BANK ACCOUNT NO</span><span class="pdf-val" id="p_bank"></span></td></tr>
+        </table>
+        <div class="pdf-section-title">DETAILS FOR EPF</div>
+        <table class="pdf-table">
+            <tr><td width="50%"><span class="pdf-label">FATHER'S NAME</span><span class="pdf-val" id="p_father"></span></td><td width="50%"><span class="pdf-label">MOTHER'S NAME</span><span class="pdf-val" id="p_mother"></span></td></tr><tr><td><span class="pdf-label">CIVIL STATUS</span><span class="pdf-val" id="p_civil"></span></td><td><span class="pdf-label">WIFE'S NAME</span><span class="pdf-val" id="p_wife"></span></td></tr><tr><td colspan="2"><span class="pdf-label">NAME OF THE NOMINEE FOR EPF</span><span class="pdf-val" id="p_nominee"></span></td></tr><tr><td><span class="pdf-label">RELATIONSHIP WITH NOMINEE</span><span class="pdf-val" id="p_relation"></span></td><td><span class="pdf-label">NIC NO OF NOMINEE</span><span class="pdf-val" id="p_nomic"></span></td></tr><tr><td style="text-align: center; vertical-align: middle;"><div class="pdf-photo-box">PHOTOGRAPH</div></td><td style="vertical-align: bottom;"><span class="pdf-label">SIGNATURE</span><br><br><br>.......................................................</td></tr>
+        </table>
+        <div class="pdf-section-title" style="margin-top: 20px;">FOR OFFICE USE ONLY</div>
+        <table class="pdf-table"><tr><td width="33%"><span class="pdf-label">HIRING DATE</span><br><br></td><td width="33%"><span class="pdf-label">EMPLOYEE NO.</span><br><br></td><td width="34%"><span class="pdf-label">DESIGNATION</span><br><br></td></tr><tr><td colspan="2"><span class="pdf-label">GROUP</span><br><br></td><td><span class="pdf-label">WORK LOCATION</span><br><br></td></tr></table>
+    </div>
+
+    <div id="sheet-view"><div class="view-header"><h3 style="margin:0; color:#333;">📋 Live Gang Allocation</h3><button class="btn-back" onclick="switchView('landing-view')">⬅ Back</button></div><div class="sheet-grid" id="public-sheet-container"></div></div>
+
+    <div id="map-view"><div class="view-header"><h3 style="margin:0; color:#333;">🛰️ Hambantota Satellite Radar</h3><button class="btn-back" onclick="switchView('landing-view')">⬅ Back</button></div><div id="radarMap"></div></div>
+
+    <div id="history-view"><div class="view-header"><h3 style="margin:0; color:#333;">📋 Gang History (Day Wise)</h3><button class="btn-back" onclick="switchView('supervisor-view')">⬅ Back</button></div><div class="box-section"><div class="history-controls"><label>දිනය තෝරන්න (Select Date):</label><input type="date" id="history-date-picker" class="history-input"><button class="btn-hist-get" onclick="getHistoricalGangs()">📥 දත්ත ලබාගැනීම (Load)</button></div><div id="history-results-container"></div></div></div>
+
+    <div id="supervisor-view">
+        <div class="view-header" style="max-width: 800px;"><button class="btn-back" onclick="switchView('landing-view')">⬅ Hub</button><h3 style="margin:0; color:#f25c05;">Supervisor Dashboard</h3><div class="live-badge">🟢 LIVE SYNC ACTIVE</div></div>
+        <div class="box-section" style="text-align: center;"><select id="shiftSelect" class="shift-select"><option value="A_DAY">Shift A (Day: 07:00 AM - 07:00 PM)</option><option value="A_NIGHT">Shift A (Night: 07:00 PM - 07:00 AM)</option><option value="B_DAY">Shift B (Day: 07:00 AM - 07:00 PM)</option><option value="B_NIGHT">Shift B (Night: 07:00 PM - 07:00 AM)</option><option value="C_DAY">Shift C (Day: 07:00 AM - 07:00 PM)</option><option value="C_NIGHT">Shift C (Night: 07:00 PM - 07:00 AM)</option></select></div>
+        <div class="box-section" style="text-align: center;"><label style="font-weight: bold; display: block; margin-bottom: 8px; color: #555; font-size: 13px;">📱 SCAN WORKER QR:</label><div id="reader"></div><p id="scan_status" style="font-weight: bold; font-size: 14px; margin-top: 10px;"></p></div>
+        <div class="box-section" style="text-align: center; border: 2px solid #1e88e5;"><h3 class="section-title" style="border-left-color: #1e88e5;">🚢 Add Vessel to Radar</h3><input type="text" id="shipNameInput" class="ship-input" placeholder="Vessel Name (e.g. MSC LUCIANA)"><select id="shipQcSelect" class="shift-select" style="margin-top:10px;"><option value="qc01">Berth QC 01</option><option value="qc02">Berth QC 02</option><option value="qc03">Berth QC 03</option><option value="qc04">Berth QC 04</option><option value="qc05">Berth QC 05</option><option value="qc06">Berth QC 06</option></select><button class="btn-hub" style="background: #1e88e5; margin-top: 10px; padding: 10px;" onclick="addVesselToMap()">📡 Update Ship on Map</button><button class="btn-hub" style="background: #e53935; margin-top: 5px; padding: 10px;" onclick="clearVessels()">🗑️ Clear All Ships</button></div>
+        <div class="box-section" style="text-align: center;"><button class="btn-hub btn-sheet-view" onclick="openHistoryView()">📋 පරණ Gangs බලන්න (Shift History)</button></div>
+        
+        <div class="board"><div class="column-standby"><h3>👥 Standby Pool</h3><div class="list" id="standby" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div><div class="column-qc" style="border-top: 3px solid #1e88e5;"><h3>🏗️ QC 01</h3><div class="list" id="qc01" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div><div class="column-qc" style="border-top: 3px solid #e53935;"><h3>🏗️ QC 02</h3><div class="list" id="qc02" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div><div class="column-qc" style="border-top: 3px solid #fbc02d;"><h3>🏗️ QC 03</h3><div class="list" id="qc03" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div><div class="column-qc" style="border-top: 3px solid #43a047;"><h3>🏗️ QC 04</h3><div class="list" id="qc04" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div><div class="column-qc" style="border-top: 3px solid #8d6e63;"><h3>🏗️ QC 05</h3><div class="list" id="qc05" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div><div class="column-qc" style="border-top: 3px solid #00bcd4;"><h3>🏗️ QC 06</h3><div class="list" id="qc06" ondrop="drop(event)" ondragover="allowDrop(event)"></div></div></div>
+        
+        <div class="box-section">
+            <h3 class="section-title">🔧 Equipment</h3>
+            <div class="eq-item"><div class="eq-name">Spanners</div><div class="eq-controls"><div class="eq-group"><button class="btn-qty" onclick="changeEq('span_iss', -1)">-</button><input type="text" id="span_iss" class="eq-val" value="0" readonly><button class="btn-qty" onclick="changeEq('span_iss', 1)">+</button></div><div class="eq-group"><span class="eq-label">Ret:</span><button class="btn-qty" onclick="changeEq('span_ret', -1)">-</button><input type="text" id="span_ret" class="eq-val" value="0" readonly><button class="btn-qty" onclick="changeEq('span_ret', 1)">+</button></div></div></div>
+            <div class="eq-item"><div class="eq-name">Poles</div><div class="eq-controls"><div class="eq-group"><button class="btn-qty" onclick="changeEq('pole_iss', -1)">-</button><input type="text" id="pole_iss" class="eq-val" value="0" readonly><button class="btn-qty" onclick="changeEq('pole_iss', 1)">+</button></div><div class="eq-group"><span class="eq-label">Ret:</span><button class="btn-qty" onclick="changeEq('pole_ret', -1)">-</button><input type="text" id="pole_ret" class="eq-val" value="0" readonly><button class="btn-qty" onclick="changeEq('pole_ret', 1)">+</button></div></div></div>
+        </div>
+        <div class="box-section" style="text-align: center; border: 2px solid #333;"><h3 class="section-title" style="border-left-color: #333;">📊 Report Generator</h3><button class="btn-hub" style="background: #107c41; margin-top: 10px; padding: 10px;" onclick="downloadExcelReport()">📉 Download Excel Report</button><button class="btn-hub" style="background: #25D366; margin-top: 5px; padding: 10px;" onclick="sendWhatsAppReport()">💬 Send WhatsApp Summary</button></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getDatabase, ref, set, push, onValue, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+        const firebaseConfig = { apiKey: "AIzaSyCqHf0Wop5oyGOxshaSp_36Gxj_CjJDRj0", authDomain: "lashing-supervisor-app.firebaseapp.com", projectId: "lashing-supervisor-app", storageBucket: "lashing-supervisor-app.firebasestorage.app", messagingSenderId: "828823307538", appId: "1:828823307538:web:10ee9138c90d41ca529fcb" };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        MobileDragDrop.polyfill({ holdToDrag: 250 });
+
+        const qcColors = { 'qc01': '#1e88e5', 'qc02': '#e53935', 'qc03': '#fbc02d', 'qc04': '#43a047', 'qc05': '#8d6e63', 'qc06': '#00bcd4' };
+        const qcFriendlyNames = { 'qc01': '🏗️ QC 01', 'qc02': '🏗️ QC 02', 'qc03': '🏗️ QC 03', 'qc04': '🏗️ QC 04', 'qc05': '🏗️ QC 05', 'qc06': '🏗️ QC 06' };
+        const qcListIds = ['qc01', 'qc02', 'qc03', 'qc04', 'qc05', 'qc06'];
+        const allListIds = ['standby', ...qcListIds];
+
+        // --- MASTERMIND SMART SHIFT DETECTOR & AUTO-RESET ---
+        function checkAndResetShift() {
+            const now = new Date();
+            let hours = now.getHours();
+            let dateStr = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2, '0') + "-" + String(now.getDate()).padStart(2, '0');
+            
+            let currentShiftId = "";
+            // Day Shift: 06:00 AM to 05:59 PM
+            if (hours >= 6 && hours < 18) {
+                currentShiftId = dateStr + "_DAY";
+            } else {
+                // Night Shift: 06:00 PM to 05:59 AM (next day)
+                if (hours < 6) {
+                    let prevDay = new Date(now);
+                    prevDay.setDate(now.getDate() - 1);
+                    let prevDateStr = prevDay.getFullYear() + "-" + String(prevDay.getMonth()+1).padStart(2, '0') + "-" + String(prevDay.getDate()).padStart(2, '0');
+                    currentShiftId = prevDateStr + "_NIGHT";
+                } else {
+                    currentShiftId = dateStr + "_NIGHT";
+                }
+            }
+
+            get(ref(db, 'system_state/active_shift')).then(snap => {
+                const activeShift = snap.val();
+                if (activeShift !== currentShiftId) {
+                    // NEW SHIFT DETECTED! WIPE THE BOARD!
+                    set(ref(db, 'raw_workers'), null);
+                    set(ref(db, 'gang_board_state'), null);
+                    set(ref(db, 'equipment'), { span_iss:0, span_ret:0, pole_iss:0, pole_ret:0 });
+                    set(ref(db, 'system_state/active_shift'), currentShiftId);
+                    console.log("🔄 Auto-Reset executed for new shift: " + currentShiftId);
+                }
+            });
+        }
+        
+        // Run shift check immediately on load
+        checkAndResetShift();
+        // Check every 10 minutes in case the app is left open
+        setInterval(checkAndResetShift, 10 * 60 * 1000);
+
+        window.addEventListener('load', () => {
+            if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
+            setTimeout(() => {
+                document.getElementById('preloader').style.opacity = '0';
+                setTimeout(() => { document.getElementById('preloader').style.display = 'none'; }, 800);
+            }, 4000); 
+        });
+
+        window.switchView = function(viewId) {
+            document.querySelectorAll('body > div').forEach(div => { if(div.id !== 'preloader' && div.id !== 'printable-form') div.classList.remove('active'); });
+            document.getElementById(viewId).classList.add('active');
+            if(viewId === 'map-view') setTimeout(() => { map.invalidateSize(); }, 200);
+            if(viewId === 'history-view') { document.getElementById('history-date-picker').valueAsDate = new Date(); }
+        };
+
+        window.loginSupervisor = function() {
+            const pin = document.getElementById('sup-pin').value;
+            if(pin === "7777") {
+                document.getElementById('sup-pin').value = '';
+                document.getElementById('login-err').style.display = 'none';
+                switchView('supervisor-view');
+                if(!html5QrcodeScanner) initScanner();
+            } else { document.getElementById('login-err').style.display = 'block'; }
+        };
+
+        window.openHistoryView = function() { switchView('history-view'); }
+
+        function renderPublicSmartSheet(boardState) {
+            const container = document.getElementById('public-sheet-container'); container.innerHTML = ''; 
+            qcListIds.forEach(id => {
+                const workers = boardState[id] || []; const color = qcColors[id] || 'gray'; const title = qcFriendlyNames[id] || id.toUpperCase();
+                let shipHTML = workers.filter(w => w.role === 'Ship').map(w => `<div class="sheet-worker-tag">🚢 <span>${w.name}</span></div>`).join('');
+                let quayHTML = workers.filter(w => w.role === 'Quay').map(w => `<div class="sheet-worker-tag">🏗️ <span>${w.name}</span></div>`).join('');
+                container.innerHTML += `<div class="sheet-qc-card" style="border-left-color: ${color};"><div class="sheet-qc-header" style="background-color: ${color};"><span>${title}</span><span style="font-size:12px; background:rgba(0,0,0,0.2); padding:2px 8px; border-radius:10px;">Total: ${workers.length}</span></div><div style="display: flex; background: #fdfdfd;"><div style="flex: 1; padding: 10px; border-right: 1px dashed #ccc; display: flex; flex-direction: column; gap: 8px;"><h4 style="margin:0; color:#444; font-size:13px; text-align:center;">🚢 නැවේ</h4>${shipHTML || '<div class="sheet-no-workers">නැත</div>'}</div><div style="flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 8px;"><h4 style="margin:0; color:#444; font-size:13px; text-align:center;">🏗️ වෝෆ්</h4>${quayHTML || '<div class="sheet-no-workers">නැත</div>'}</div></div></div>`;
+            });
+            const standbys = boardState['standby'] || [];
+            let standbyHTML = standbys.map(w => `<div class="sheet-worker-tag" style="width: auto;">⏳ <span>${w.name}</span> <span style="font-size:10px; color:#666; margin-left:4px;">(${w.time})</span></div>`).join('');
+            container.innerHTML += `<div class="sheet-qc-card" style="border-left-color: #555; margin-top: 10px;"><div class="sheet-qc-header" style="background-color: #555;"><span>👥 Standby Pool</span><span style="font-size:12px; background:rgba(0,0,0,0.2); padding:2px 8px; border-radius:10px;">Count: ${standbys.length}</span></div><div style="padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; background: #fdfdfd;">${standbyHTML || '<div class="sheet-no-workers">රාජකාරියේ නැත</div>'}</div></div>`;
+        }
+
+        const map = L.map('radarMap').setView([6.126004, 81.097834], 16); 
+        L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3'] }).addTo(map);
+
+        let mapMarkers = {}, shipMarkers = {};
+
+        const portCoords = {
+            'qc01': [6.126004, 81.097301],
+            'qc02': [6.125604, 81.097301],
+            'qc03': [6.125204, 81.097301],
+            'qc04': [6.124804, 81.097301],
+            'qc05': [6.124404, 81.097301],
+            'qc06': [6.125004, 81.097301]
+        };
+
+        window.addVesselToMap = function() {
+            const shipName = document.getElementById('shipNameInput').value;
+            const qc = document.getElementById('shipQcSelect').value;
+            if(!shipName) { alert("Vessel Name!"); return; }
+            set(ref(db, 'active_ships/' + qc), { name: shipName, updated: new Date().toLocaleTimeString() });
+            document.getElementById('shipNameInput').value = '';
+        }
+
+        window.clearVessels = function() { set(ref(db, 'active_ships'), null); }
+
+        onValue(ref(db, 'active_ships'), (snapshot) => {
+            const ships = snapshot.val() || {};
+            for (const key in shipMarkers) { map.removeLayer(shipMarkers[key]); } shipMarkers = {};
+            for (const [qc, data] of Object.entries(ships)) {
+                let coords = portCoords[qc];
+                if(coords) {
+                    let shipIcon = L.divIcon({ 
+                        className: 'custom-pin-wrap', 
+                        html: `<div class="vessel-pin-vertical"><span class="vessel-pin-text">🚢 ${data.name.toUpperCase()}</span></div>`, 
+                        iconSize: [30, 120],  
+                        iconAnchor: [15, 60] 
+                    });
+                    shipMarkers[qc] = L.marker(coords, {icon: shipIcon}).addTo(map);
+                }
+            }
+        });
+
+        function getWorkerBoardDetails(safeName) { let details = null; document.querySelectorAll('.worker').forEach(w => { if(w.getAttribute('data-name').replace(/[.#$[\]]/g, "_") === safeName) { details = { qcList: w.parentNode.id, role: w.getAttribute('data-role'), phone: w.getAttribute('data-phone'), rawName: w.getAttribute('data-name') }; } }); return details; }
+
+        onValue(ref(db, 'live_radar'), (snapshot) => {
+            const locations = snapshot.val() || {};
+            for (const [safeName, data] of Object.entries(locations)) {
+                let wDetails = getWorkerBoardDetails(safeName);
+                if(wDetails) {
+                    let latLng = [data.lat, data.lng]; let bgColor = qcColors[wDetails.qcList] || 'gray'; let roleIcon = wDetails.role === 'Ship' ? '🚢' : '🏗️'; let waNumber = wDetails.phone.startsWith('0') ? '94' + wDetails.phone.substring(1) : wDetails.phone;
+                    let customIcon = L.divIcon({ className: 'custom-pin-wrap', html: `<div style="position: relative;"><div class="custom-pin" style="background-color: ${bgColor}; width: 35px; height: 35px;">${roleIcon}</div><div style="position: absolute; top: 38px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.95); padding: 2px 8px; border-radius: 6px; font-size: 12px; color: #111; font-weight: bold; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.3); border: 2px solid ${bgColor};">${wDetails.rawName}</div></div>`, iconSize: [35, 35], iconAnchor: [17, 35] });
+                    let popupHTML = `<div style="text-align:center;"><span style="font-size:16px; color:#333;">${wDetails.rawName}</span><br><span style="font-size:11px; color:#888;">${wDetails.qcList.toUpperCase()} | ${wDetails.role}</span><br><a href="tel:${wDetails.phone}" class="btn-call">📞 Call</a> <a href="https://wa.me/${waNumber}" class="btn-wa">💬 WA</a></div>`;
+                    if(mapMarkers[safeName]) { mapMarkers[safeName].setLatLng(latLng); mapMarkers[safeName].setIcon(customIcon); mapMarkers[safeName].getPopup().setContent(popupHTML); } else { let marker = L.marker(latLng, {icon: customIcon}).addTo(map); marker.bindPopup(popupHTML); mapMarkers[safeName] = marker; }
+                } else { if(mapMarkers[safeName]) { map.removeLayer(mapMarkers[safeName]); delete mapMarkers[safeName]; } }
+            }
+            for (const safeName in mapMarkers) { if (!locations[safeName]) { map.removeLayer(mapMarkers[safeName]); delete mapMarkers[safeName]; } }
+        });
+
+        let html5QrcodeScanner = null; let lastScannedName = ""; let lastScanTime = 0;
+        function initScanner() { html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false); html5QrcodeScanner.render((decodedText) => { let now = Date.now(); if(decodedText === lastScannedName && (now - lastScanTime) < 5000) return; let parts = decodedText.split('|'); let wName = parts[0]; let wPhone = parts.length > 1 ? parts[1] : ''; let alreadyExists = false; document.querySelectorAll('.worker').forEach(w => { if(w.getAttribute('data-name') === wName) alreadyExists = true; }); if(alreadyExists) { lastScannedName = decodedText; lastScanTime = now; const statusBox = document.getElementById('scan_status'); statusBox.style.color = "red"; statusBox.innerHTML = `⚠️ ${wName} Already In!`; setTimeout(() => statusBox.innerHTML = "", 4000); return; } lastScannedName = decodedText; lastScanTime = now; push(ref(db, 'raw_workers'), { name: wName, phone: wPhone, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), role: 'Quay' }); const statusBox = document.getElementById('scan_status'); statusBox.style.color = "#43a047"; statusBox.innerHTML = `✅ ${wName} Checked!`; setTimeout(() => statusBox.innerHTML = "", 3000); }); }
+
+        window.allowDrop = function(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); };
+        window.drag = function(ev) { ev.dataTransfer.setData("text", ev.target.id); };
+        window.drop = function(ev) { ev.preventDefault(); ev.currentTarget.classList.remove('drag-over'); const cardId = ev.dataTransfer.getData("text"); const workerCard = document.getElementById(cardId); ev.currentTarget.appendChild(workerCard); workerCard.style.borderLeftColor = qcColors[ev.currentTarget.id] || 'gray'; saveBoardState(); };
+        document.querySelectorAll('.list').forEach(list => { list.addEventListener('dragleave', function(ev) { ev.currentTarget.classList.remove('drag-over'); }); });
+
+        window.toggleRole = function(workerId, event) { if(event) event.stopPropagation(); const wCard = document.getElementById(workerId); let newRole = wCard.getAttribute('data-role') === 'Quay' ? 'Ship' : 'Quay'; wCard.setAttribute('data-role', newRole); wCard.querySelector('.role-btn').innerHTML = newRole === 'Ship' ? '🚢' : '🏗️'; saveBoardState(); }
+
+        function saveBoardState() { 
+            const state = {}; 
+            const today = new Date().toISOString().split('T')[0]; 
+            let totalWorkers = 0;
+
+            allListIds.forEach(id => { 
+                if(document.getElementById(id)) { 
+                    state[id] = Array.from(document.getElementById(id).children).map(el => ({ id: el.id, name: el.getAttribute('data-name'), phone: el.getAttribute('data-phone'), time: el.getAttribute('data-time'), q: el.getAttribute('data-q'), role: el.getAttribute('data-role') })); 
+                    totalWorkers += state[id].length;
+                } 
+            }); 
+            
+            set(ref(db, 'gang_board_state'), state); 
+            
+            // Only save to history if there are actually workers (don't save empty boards during auto-reset)
+            if (totalWorkers > 0) {
+                set(ref(db, 'historical_gangs/' + today), state); 
+            }
+        }
+
+        onValue(ref(db, 'raw_workers'), (snapshot) => { const data = snapshot.val(); if(data) { Object.entries(data).forEach(([key, worker], index) => { if(!document.getElementById("worker_" + key)) { createWorkerCard('standby', "worker_" + key, worker.name, worker.phone || '', worker.time, index + 1, worker.role || 'Quay'); saveBoardState(); } }); } });
+
+        function createWorkerCard(targetListId, id, name, phone, time, qNum, role) { const card = document.createElement('div'); card.className = 'worker'; card.id = id; card.draggable = true; card.style.borderLeftColor = qcColors[targetListId] || 'gray'; card.setAttribute('data-name', name); card.setAttribute('data-phone', phone); card.setAttribute('data-time', time); card.setAttribute('data-q', qNum); card.setAttribute('data-role', role); card.addEventListener('dragstart', window.drag); card.innerHTML = `<div class="w-info"><span class="w-name">${name}</span><span class="w-time">⏰ In: ${time}</span></div><button class="role-btn" onclick="toggleRole('${id}', event)">${role === 'Ship' ? '🚢' : '🏗️'}</button><div class="q-num">${qNum}</div>`; if(document.getElementById(targetListId)) document.getElementById(targetListId).appendChild(card); }
+
+        onValue(ref(db, 'gang_board_state'), (snapshot) => { const data = snapshot.val() || {}; allListIds.forEach(listId => { const list = document.getElementById(listId); if(list) { list.innerHTML = ''; if(data[listId]) data[listId].forEach(w => createWorkerCard(listId, w.id, w.name, w.phone, w.time, w.q, w.role)); } }); renderPublicSmartSheet(data); });
+
+        window.getHistoricalGangs = function() { const dateStr = document.getElementById('history-date-picker').value; if(!dateStr) return; const historyContainer = document.getElementById('history-results-container'); historyContainer.innerHTML = 'දත්ත පරීක්ෂා කරමින්...'; const histRef = ref(db, 'historical_gangs/' + dateStr); get(histRef).then((snapshot) => { if (snapshot.exists()) { const data = snapshot.val(); let resultsHTML = `<h4>📊 History for ${dateStr}</h4>`; qcListIds.forEach(qcId => { const crews = data[qcId] || []; if(crews.length > 0) { resultsHTML += `<div style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:5px;"><strong>${qcFriendlyNames[qcId]}:</strong><br><span style="font-size:12px; color:#555;">(Ship: ${crews.filter(w => w.role === 'Ship').map(w => w.name).join(', ') || 'None'}) / (Quay: ${crews.filter(w => w.role === 'Quay').map(w => w.name).join(', ') || 'None'})</span></div>`; } }); resultsHTML += `<strong>👥 Standby:</strong><br><span style="font-size:12px; color:#555;">${(data['standby'] || []).map(w => w.name).join(', ') || 'සියලුම සේවකයින් රාජකාරියේ.'}</span>`; historyContainer.innerHTML = resultsHTML; } else { historyContainer.innerHTML = `⚠️ ${dateStr} දත්ත සොයා ගැනීමට නොහැකි විය.`; } }).catch(() => historyContainer.innerHTML = '❌ දත්ත ලබා ගැනීමේ ගැටළුවක්.'); }
+
+        window.changeEq = function(id, amt) { let val = parseInt(document.getElementById(id).value) + amt; set(ref(db, 'equipment/'+id), val < 0 ? 0 : val); };
+        onValue(ref(db, 'equipment'), snap => { for(const [k,v] of Object.entries(snap.val()||{})) { if(document.getElementById(k)) document.getElementById(k).value = v; } });
+
+        window.sendWhatsAppReport = function() {
+            const shiftText = document.getElementById('shiftSelect').options[document.getElementById('shiftSelect').selectedIndex].text; const date = new Date().toLocaleDateString();
+            let report = `*🚢 HIMASHI MARINE - SHIFT SUMMARY*%0A*Date:* ${date}%0A*Shift:* ${shiftText}%0A%0A*🏗️ GANG ALLOCATION:*%0A`;
+            let totalAllocated = 0; ['qc01', 'qc02', 'qc03', 'qc04', 'qc05', 'qc06'].forEach(id => { const list = document.getElementById(id); if(list && list.children.length > 0) { report += `- ${id.toUpperCase()}: ${list.children.length} Workers%0A`; totalAllocated += list.children.length; } });
+            if(document.getElementById('standby').children.length > 0) report += `- Standby: ${document.getElementById('standby').children.length} Workers%0A`;
+            if (totalAllocated === 0) report += `- No allocations.%0A`;
+            report += `%0A*🔧 EQUIPMENT STATUS:*%0A- Spanners (Iss/Ret): ${document.getElementById('span_iss').value} / ${document.getElementById('span_ret').value}%0A- Poles (Iss/Ret): ${document.getElementById('pole_iss').value} / ${document.getElementById('pole_ret').value}%0A%0A`;
+            window.open(`https://wa.me/?text=${report}`, '_blank');
+        };
+
+        window.downloadExcelReport = function() {
+            const shiftText = document.getElementById('shiftSelect').options[document.getElementById('shiftSelect').selectedIndex].text; const dateStr = new Date().toLocaleDateString();
+            let wbData = [["HIMASHI MARINE - SHIFT SUMMARY REPORT"], ["Date:", dateStr, "Shift:", shiftText], [], ["🔧 EQUIPMENT STATUS"], ["Item Name", "Issued", "Returned"], ["Lashing Spanners", document.getElementById('span_iss').value, document.getElementById('span_ret').value], ["Actuator Poles", document.getElementById('pole_iss').value, document.getElementById('pole_ret').value], [], ["🏗️ GANG ALLOCATION"], ["Location/QC", "Worker Name", "Role", "Time In", "Contact"]];
+            ['qc01', 'qc02', 'qc03', 'qc04', 'qc05', 'qc06'].forEach(id => { const list = document.getElementById(id); if(list && list.children.length > 0) { Array.from(list.children).forEach(w => wbData.push([ id.toUpperCase(), w.getAttribute('data-name'), w.getAttribute('data-role'), w.getAttribute('data-time'), w.getAttribute('data-phone') ])); } });
+            if(document.getElementById('standby').children.length > 0) { Array.from(document.getElementById('standby').children).forEach(w => wbData.push(["STANDBY POOL", w.getAttribute('data-name'), "Standby", w.getAttribute('data-time'), w.getAttribute('data-phone')])); }
+            const ws = XLSX.utils.aoa_to_sheet(wbData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Shift_Report");
+            XLSX.writeFile(wb, `Himashi_Shift_Report_${dateStr.replace(/\//g, '-')}.xlsx`);
+        };
+    </script>
+    <script>
+        window.generateEmployeePDF = function() {
+            const inputs = ['fullName','initials','nic','gender','address','town','district','dob','birthplace','contact','bank','father','mother','civil','wife','nominee','relation','nomic'];
+            inputs.forEach(id => document.getElementById('p_'+id).innerText = document.getElementById('i_'+id).value);
+            const element = document.getElementById('printable-form'); element.style.display = 'block'; 
+            const opt = { margin: 0.4, filename: `Employee_Data_${document.getElementById('i_fullName').value}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+            html2pdf().set(opt).from(element).save().then(() => { element.style.display = 'none'; alert("✅ PDF Downloaded!"); });
+        }
+        let persistedWorkerName = "", watchId = null, silentPlayer = document.getElementById('silentAudio');
+        function checkWorkerPersistence() { persistedWorkerName = localStorage.getItem('himashi_worker_name'); if (persistedWorkerName) { document.getElementById('saved-worker-name').innerText = persistedWorkerName; document.getElementById('persisting-identity-check').style.display = 'block'; } }
+     // --- THE MASTERMIND NATIVE GPS ENGINE ---
+        function startTrackingPersistedWorker() {
+            if (!persistedWorkerName || !localStorage.getItem('himashi_worker_phone')) { 
+                alert("⚠️ Register first!"); window.location.href = 'worker.html'; return; 
+            }
+
+            const btnResume = document.getElementById('btnResumeGps'); 
+            btnResume.innerHTML = "📍 Connecting..."; btnResume.disabled = true;
+
+            // Firebase Update Function
+            const updateFirebase = (lat, lng) => {
+                import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js").then((app_mod) => {
+                    const app = app_mod.initializeApp({ apiKey: "AIzaSyCqHf0Wop5oyGOxshaSp_36Gxj_CjJDRj0", authDomain: "lashing-supervisor-app.firebaseapp.com", projectId: "lashing-supervisor-app", storageBucket: "lashing-supervisor-app.firebasestorage.app", messagingSenderId: "828823307538", appId: "1:828823307538:web:10ee9138c90d41ca529fcb" });
+                    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js").then((db_mod) => {
+                        db_mod.set(db_mod.ref(db_mod.getDatabase(app), 'live_radar/' + persistedWorkerName.replace(/[.#$[\]]/g, "_")), { lat: lat, lng: lng, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
+                    });
+                });
+            };
+
+            // Mastermind OS Detector: Check if running as Native APK or Web
+            if (window.Capacitor && window.Capacitor.Plugins.BackgroundGeolocation) {
+                
+                // 1. NATIVE ANDROID FOREGROUND SERVICE (App Mode)
+                const BackgroundGeolocation = window.Capacitor.Plugins.BackgroundGeolocation;
+                
+                BackgroundGeolocation.addWatcher(
+                    {
+                        backgroundMessage: "Tracking Shift Location in Background.",
+                        backgroundTitle: "Himashi Marine - Active Shift",
+                        requestPermissions: true,
+                        stale: false,
+                        distanceFilter: 2 // Update every 2 meters
+                    },
+                    function callback(location, error) {
+                        if (error) { console.error("GPS Error:", error); return; }
+                        updateFirebase(location.latitude, location.longitude);
+                    }
+                ).then(function (watcher_id) {
+                    watchId = watcher_id;
+                    btnResume.innerHTML = "🟢 Shift Active (Native App)"; 
+                    btnResume.style.background = "#43a047"; 
+                    btnResume.onclick = stopShiftGPS; 
+                    btnResume.disabled = false;
+                });
+
+            } else {
+                
+                // 2. WEB BROWSER FALLBACK (Web Mode)
+                if (!navigator.geolocation) { alert("GPS not available."); return; }
+                
+                silentPlayer.play().catch(() => console.log("Blocked")); 
+                requestWakeLock();
+                document.getElementById('btnEnablePocket').style.display = 'block';
+                
+                watchId = navigator.geolocation.watchPosition( (pos) => {
+                    updateFirebase(pos.coords.latitude, pos.coords.longitude);
+                    btnResume.innerHTML = "🟢 Shift Active (Web App)"; 
+                    btnResume.style.background = "#43a047"; 
+                    btnResume.onclick = stopShiftGPS; 
+                    btnResume.disabled = false;
+                }, () => alert("❌ GPS error."), { enableHighAccuracy: true } );
+            }
+        }
+        
+        function stopShiftGPS() { 
+            // Stop Native GPS
+            if (window.Capacitor && window.Capacitor.Plugins.BackgroundGeolocation) {
+                window.Capacitor.Plugins.BackgroundGeolocation.removeWatcher({ id: watchId });
+            } else {
+                // Stop Web GPS
+                if(watchId) navigator.geolocation.clearWatch(watchId); 
+                silentPlayer.pause(); 
+                if(wakeLock !== null) wakeLock.release().then(() => wakeLock = null);
+                document.getElementById('btnEnablePocket').style.display = 'none';
+            }
+            document.getElementById('btnResumeGps').innerHTML = "🔴 Start Shift"; 
+            window.location.reload(); 
+        }
+     </script>
+</body>
+</html>

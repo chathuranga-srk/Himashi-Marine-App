@@ -1,0 +1,41 @@
+name: Build Himashi Marine APK
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install Dependencies
+      run: npm install
+
+    - name: Setup Java (Android Studio Engine)
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Sync Capacitor
+      run: npx cap sync android
+
+    - name: Build Native APK
+      working-directory: ./android
+      run: ./gradlew assembleDebug
+
+    - name: Upload Final APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: Himashi-Marine-App
+        path: android/app/build/outputs/apk/debug/app-debug.apk

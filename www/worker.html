@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lasher QR & Live Tracker - Himashi Marine</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#f25c05">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; padding: 20px; text-align: center; }
+        .container { background: #fff; padding: 20px; border-radius: 12px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-top: 6px solid #f25c05; position: relative; }
+        
+        /* Branding & Navigation */
+        .header-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .logo-img { max-width: 50px; border-radius: 5px; }
+        .btn-back-hub { background: #333; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; text-decoration: none; }
+        
+        h2 { color: #333; margin-top: 0; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 15px; text-align: center; font-weight: bold; box-sizing: border-box; }
+        button { border: none; padding: 12px 20px; font-size: 15px; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s; box-sizing: border-box; }
+        
+        .btn-qr { background: #333; color: white; }
+        .btn-down { background: #f25c05; color: white; margin-top: 15px; display: none; }
+        
+        #qrBox { margin-top: 20px; display: none; background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px dashed #ccc; }
+        #qrImage { max-width: 200px; border: 3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.2); border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-section">
+            <a href="index.html" class="btn-back-hub">⬅ Hub</a>
+            <img src="icon-192.png" alt="Himashi Logo" class="logo-img">
+        </div>
+
+        <h2>👷 Create QR ID</h2>
+        <p style="color: #666; font-size: 13px;">නම සහ WhatsApp අංකය ඇතුළත් කර QR කේතය සාදාගන්න.</p>
+        
+        <input type="text" id="displayName" placeholder="නම (උදා: A.B.C. Perera)">
+        <input type="number" id="phoneNum" placeholder="WhatsApp (උදා: 0771234567)">
+        <button class="btn-qr" id="btnGen" onclick="generateQR()">📸 Generate My QR Code</button>
+
+        <div id="qrBox">
+            <img id="qrImage" crossorigin="anonymous" src="" alt="QR Code"><br>
+            <button class="btn-down" id="btnDown" onclick="downloadQR()">📥 Download QR to Gallery</button>
+            
+            <p style="font-size: 13px; font-weight: bold; color: #333; margin-top: 20px;">⚠️ වැදගත්!</p>
+            <p style="font-size: 12px; color: #666;">රාජකාරිය ආරම්භ කිරීම (GPS Active) ප්‍රධාන පිටුවෙන් (Hub) සිදු කල හැක.</p>
+        </div>
+    </div>
+
+    <script>
+        // generateQR check permission mulinma and redirect to worker.html y
+        window.generateQR = function() {
+            const name = document.getElementById('displayName').value.trim();
+            const phone = document.getElementById('phoneNum').value.trim();
+            if(!name || !phone) { alert("කරුණාකර නම සහ දුරකථන අංකය ඇතුළත් කරන්න!"); return; }
+            
+            // THE MASTERMIND PERSISTENCE: Save to localStorage
+            localStorage.setItem('himashi_worker_name', name);
+            localStorage.setItem('himashi_worker_phone', phone);
+            localStorage.setItem('himashi_worker_role', 'Quay'); // Default role Quay y
+
+            const qrData = encodeURIComponent(`${name}|${phone}`);
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrData}`;
+            
+            document.getElementById('qrImage').src = qrUrl;
+            document.getElementById('qrBox').style.display = 'block';
+            document.getElementById('btnDown').style.display = 'block';
+            
+            document.getElementById('btnGen').style.display = 'none';
+            document.getElementById('displayName').disabled = true;
+            document.getElementById('phoneNum').disabled = true;
+        }
+
+        window.downloadQR = async function() {
+            const imgSrc = document.getElementById('qrImage').src;
+            const image = await fetch(imgSrc);
+            const imageBlog = await image.blob();
+            const imageURL = URL.createObjectURL(imageBlog);
+            
+            const link = document.createElement('a'); link.href = imageURL;
+            link.download = `Himashi_QR_${document.getElementById('displayName').value}.png`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
