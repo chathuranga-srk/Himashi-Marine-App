@@ -261,6 +261,22 @@
 
         window.addEventListener('load', () => {
             if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
+            
+            // --- MASTERMIND SMART GPS AUTO-TRIGGER (WITH FORCE EXIT) ---
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => { console.log("✅ GPS is ON and Ready."); },
+                    (err) => { 
+                        alert("⚠️ App එක පාවිච්චි කිරීමට Location (GPS) ON කර තිබිය යුතුය! App එක Close වේ.");
+                        if (window.Capacitor && window.Capacitor.Plugins.App) {
+                            window.Capacitor.Plugins.App.exitApp();
+                        }
+                    }, 
+                    { enableHighAccuracy: true, timeout: 4000 }
+                );
+            }
+            // ------------------------------------------
+
             setTimeout(() => {
                 document.getElementById('preloader').style.opacity = '0';
                 setTimeout(() => { document.getElementById('preloader').style.display = 'none'; }, 800);
