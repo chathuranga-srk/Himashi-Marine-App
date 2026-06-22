@@ -43,10 +43,17 @@
         .btn-radar { background: #1e88e5; }
         .btn-sheet-view { background: #43a047; }
         .btn-form-view { background: #8e44ad; }
+        .btn-cache { background: #607d8b; font-size: 14px; padding: 10px; margin-top: 15px; }
         
         .worker-resume-gps { border-top: 2px dashed #eee; margin-top: 20px; padding-top: 15px; display: none; }
         .btn-gps-persisting { background: #e53935; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(229, 57, 53, 0); } 100% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0); } }
+
+        /* POCKET MODE UI */
+        #pocket-mode-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #000; z-index: 100000; display: none; flex-direction: column; align-items: center; justify-content: center; user-select: none; }
+        .pocket-text { color: #333; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; text-align: center; animation: dimPulse 3s infinite alternate; }
+        @keyframes dimPulse { 0% { opacity: 0.1; } 100% { opacity: 0.5; } }
+        .btn-pocket { background: #000; border: 2px solid #333; color: #fff; padding: 10px; border-radius: 8px; margin-top: 10px; cursor: pointer; font-size: 12px; display: none; }
 
         .login-box { margin-top: 25px; padding-top: 20px; border-top: 2px dashed #eee; }
         .login-input { width: 100%; padding: 12px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; text-align: center; box-sizing: border-box; letter-spacing: 2px; }
@@ -71,7 +78,6 @@
         .btn-call, .btn-wa { display: inline-block; padding: 6px 12px; border-radius: 5px; text-decoration: none; margin: 5px; color: white !important; font-weight: bold; }
         .btn-call { background: #1e88e5; } .btn-wa { background: #25D366; }
 
-        /* The Vertical Ship Marker Hack */
         .vessel-pin-vertical { background: #7cb342; border: 2px solid #33691e; color: white; font-weight: bold; font-size: 12px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.4); white-space: nowrap; position: relative; width: 40px; height: 250px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; 
             clip-path: polygon(50% 0%, 100% 10%, 100% 90%, 50% 100%, 0% 90%, 0% 10%); }
         .vessel-pin-text { position: absolute; transform: rotate(-90deg); white-space: nowrap; font-size: 13px; text-shadow: 1px 1px 2px #000; }
@@ -119,6 +125,10 @@
 </head>
 <body onload="checkWorkerPersistence()">
 
+    <div id="pocket-mode-overlay" ondblclick="disablePocketMode()">
+        <p class="pocket-text">POCKET MODE ACTIVE<br><br>GPS is Syncing...<br><br>Double Tap anywhere to Wake</p>
+    </div>
+
     <div id="preloader">
         <img src="icon-192.png" alt="Himashi Logo" class="loader-logo">
         <div class="loader-text">HIMASHI MARINE</div>
@@ -139,10 +149,14 @@
             <div id="persisting-identity-check" class="worker-resume-gps">
                 <p style="font-size:12px; font-weight:bold; color:#444;">Hello <span id="saved-worker-name" style="color:#f25c05;"></span>!</p>
                 <button class="btn-hub btn-gps-persisting" id="btnResumeGps" onclick="startTrackingPersistedWorker()">🔴 Start Shift (Active GPS)</button>
+                <button class="btn-pocket" id="btnEnablePocket" onclick="enablePocketMode()">🔋 Enable Pocket Mode</button>
             </div>
             <button class="btn-hub btn-sheet-view" onclick="switchView('sheet-view')">📋 සජීවී සේවක ලේඛනය (Gang Sheet)</button>
             <button class="btn-hub btn-radar" onclick="switchView('map-view')">🛰️ සජීවී සිතියම (Live Radar)</button>
             <button class="btn-hub btn-form-view" onclick="switchView('form-view')">📝 Employee Data Form</button>
+            
+            <button class="btn-hub btn-cache" onclick="forceClearCache()">🧹 Clear System Cache & Update</button>
+
             <div class="login-box">
                 <p style="font-weight: bold; color: #555; margin-bottom: 10px; font-size: 14px;">🔒 SUPERVISOR LOGIN</p>
                 <input type="password" id="sup-pin" class="login-input" placeholder="Enter PIN">
@@ -212,18 +226,15 @@
         const qcListIds = ['qc01', 'qc02', 'qc03', 'qc04', 'qc05', 'qc06'];
         const allListIds = ['standby', ...qcListIds];
 
-        // --- MASTERMIND SMART SHIFT DETECTOR & AUTO-RESET ---
         function checkAndResetShift() {
             const now = new Date();
             let hours = now.getHours();
             let dateStr = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2, '0') + "-" + String(now.getDate()).padStart(2, '0');
             
             let currentShiftId = "";
-            // Day Shift: 06:00 AM to 05:59 PM
             if (hours >= 6 && hours < 18) {
                 currentShiftId = dateStr + "_DAY";
             } else {
-                // Night Shift: 06:00 PM to 05:59 AM (next day)
                 if (hours < 6) {
                     let prevDay = new Date(now);
                     prevDay.setDate(now.getDate() - 1);
@@ -237,19 +248,15 @@
             get(ref(db, 'system_state/active_shift')).then(snap => {
                 const activeShift = snap.val();
                 if (activeShift !== currentShiftId) {
-                    // NEW SHIFT DETECTED! WIPE THE BOARD!
                     set(ref(db, 'raw_workers'), null);
                     set(ref(db, 'gang_board_state'), null);
                     set(ref(db, 'equipment'), { span_iss:0, span_ret:0, pole_iss:0, pole_ret:0 });
                     set(ref(db, 'system_state/active_shift'), currentShiftId);
-                    console.log("🔄 Auto-Reset executed for new shift: " + currentShiftId);
                 }
             });
         }
         
-        // Run shift check immediately on load
         checkAndResetShift();
-        // Check every 10 minutes in case the app is left open
         setInterval(checkAndResetShift, 10 * 60 * 1000);
 
         window.addEventListener('load', () => {
@@ -261,7 +268,7 @@
         });
 
         window.switchView = function(viewId) {
-            document.querySelectorAll('body > div').forEach(div => { if(div.id !== 'preloader' && div.id !== 'printable-form') div.classList.remove('active'); });
+            document.querySelectorAll('body > div').forEach(div => { if(div.id !== 'preloader' && div.id !== 'printable-form' && div.id !== 'pocket-mode-overlay') div.classList.remove('active'); });
             document.getElementById(viewId).classList.add('active');
             if(viewId === 'map-view') setTimeout(() => { map.invalidateSize(); }, 200);
             if(viewId === 'history-view') { document.getElementById('history-date-picker').valueAsDate = new Date(); }
@@ -293,18 +300,11 @@
         }
 
         const map = L.map('radarMap').setView([6.126004, 81.097834], 16); 
-        L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3'] }).addTo(map);
+        L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3'] }).addTo(map);
 
         let mapMarkers = {}, shipMarkers = {};
 
-        const portCoords = {
-            'qc01': [6.126004, 81.097301],
-            'qc02': [6.125604, 81.097301],
-            'qc03': [6.125204, 81.097301],
-            'qc04': [6.124804, 81.097301],
-            'qc05': [6.124404, 81.097301],
-            'qc06': [6.125004, 81.097301]
-        };
+        const portCoords = { 'qc01': [6.126004, 81.097301], 'qc02': [6.125604, 81.097301], 'qc03': [6.125204, 81.097301], 'qc04': [6.124804, 81.097301], 'qc05': [6.124404, 81.097301], 'qc06': [6.125004, 81.097301] };
 
         window.addVesselToMap = function() {
             const shipName = document.getElementById('shipNameInput').value;
@@ -373,13 +373,42 @@
             
             set(ref(db, 'gang_board_state'), state); 
             
-            // Only save to history if there are actually workers (don't save empty boards during auto-reset)
             if (totalWorkers > 0) {
                 set(ref(db, 'historical_gangs/' + today), state); 
             }
         }
 
-        onValue(ref(db, 'raw_workers'), (snapshot) => { const data = snapshot.val(); if(data) { Object.entries(data).forEach(([key, worker], index) => { if(!document.getElementById("worker_" + key)) { createWorkerCard('standby', "worker_" + key, worker.name, worker.phone || '', worker.time, index + 1, worker.role || 'Quay'); saveBoardState(); } }); } });
+        // --- SMART RAW WORKERS SYNC (BUG FIX) ---
+        onValue(ref(db, 'raw_workers'), (snapshot) => { 
+            const data = snapshot.val(); 
+            if(data) { 
+                get(ref(db, 'gang_board_state')).then((boardSnap) => {
+                    let boardState = boardSnap.val() || {};
+                    let boardUpdated = false;
+                    
+                    Object.entries(data).forEach(([key, worker], index) => { 
+                        let workerId = "worker_" + key;
+                        let isAssigned = false;
+                        
+                        allListIds.forEach(listId => {
+                            if (boardState[listId] && boardState[listId].some(w => w.id === workerId)) {
+                                isAssigned = true;
+                            }
+                        });
+                        
+                        if (!isAssigned) {
+                            if(!boardState['standby']) boardState['standby'] = [];
+                            boardState['standby'].push({ id: workerId, name: worker.name, phone: worker.phone || '', time: worker.time, q: index + 1, role: worker.role || 'Quay' });
+                            boardUpdated = true;
+                        }
+                    });
+                    
+                    if (boardUpdated) {
+                        set(ref(db, 'gang_board_state'), boardState);
+                    }
+                });
+            } 
+        });
 
         function createWorkerCard(targetListId, id, name, phone, time, qNum, role) { const card = document.createElement('div'); card.className = 'worker'; card.id = id; card.draggable = true; card.style.borderLeftColor = qcColors[targetListId] || 'gray'; card.setAttribute('data-name', name); card.setAttribute('data-phone', phone); card.setAttribute('data-time', time); card.setAttribute('data-q', qNum); card.setAttribute('data-role', role); card.addEventListener('dragstart', window.drag); card.innerHTML = `<div class="w-info"><span class="w-name">${name}</span><span class="w-time">⏰ In: ${time}</span></div><button class="role-btn" onclick="toggleRole('${id}', event)">${role === 'Ship' ? '🚢' : '🏗️'}</button><div class="q-num">${qNum}</div>`; if(document.getElementById(targetListId)) document.getElementById(targetListId).appendChild(card); }
 
@@ -400,13 +429,32 @@
             window.open(`https://wa.me/?text=${report}`, '_blank');
         };
 
-        window.downloadExcelReport = function() {
-            const shiftText = document.getElementById('shiftSelect').options[document.getElementById('shiftSelect').selectedIndex].text; const dateStr = new Date().toLocaleDateString();
+       window.downloadExcelReport = function() {
+            const shiftText = document.getElementById('shiftSelect').options[document.getElementById('shiftSelect').selectedIndex].text; 
+            const dateStr = new Date().toLocaleDateString().replace(/\//g, '-');
             let wbData = [["HIMASHI MARINE - SHIFT SUMMARY REPORT"], ["Date:", dateStr, "Shift:", shiftText], [], ["🔧 EQUIPMENT STATUS"], ["Item Name", "Issued", "Returned"], ["Lashing Spanners", document.getElementById('span_iss').value, document.getElementById('span_ret').value], ["Actuator Poles", document.getElementById('pole_iss').value, document.getElementById('pole_ret').value], [], ["🏗️ GANG ALLOCATION"], ["Location/QC", "Worker Name", "Role", "Time In", "Contact"]];
             ['qc01', 'qc02', 'qc03', 'qc04', 'qc05', 'qc06'].forEach(id => { const list = document.getElementById(id); if(list && list.children.length > 0) { Array.from(list.children).forEach(w => wbData.push([ id.toUpperCase(), w.getAttribute('data-name'), w.getAttribute('data-role'), w.getAttribute('data-time'), w.getAttribute('data-phone') ])); } });
             if(document.getElementById('standby').children.length > 0) { Array.from(document.getElementById('standby').children).forEach(w => wbData.push(["STANDBY POOL", w.getAttribute('data-name'), "Standby", w.getAttribute('data-time'), w.getAttribute('data-phone')])); }
-            const ws = XLSX.utils.aoa_to_sheet(wbData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Shift_Report");
-            XLSX.writeFile(wb, `Himashi_Shift_Report_${dateStr.replace(/\//g, '-')}.xlsx`);
+            
+            const ws = XLSX.utils.aoa_to_sheet(wbData); 
+            const wb = XLSX.utils.book_new(); 
+            XLSX.utils.book_append_sheet(wb, ws, "Shift_Report");
+            
+            if (window.Capacitor && window.Capacitor.Plugins.Filesystem) {
+                const base64Out = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+                window.Capacitor.Plugins.Filesystem.writeFile({
+                    path: `Himashi_Shift_Report_${dateStr}.xlsx`,
+                    data: base64Out,
+                    directory: 'CACHE'
+                }).then(res => {
+                    window.Capacitor.Plugins.Share.share({
+                        title: 'Shift Report',
+                        url: res.uri
+                    });
+                }).catch(err => alert("Error saving Excel: " + err));
+            } else {
+                XLSX.writeFile(wb, `Himashi_Shift_Report_${dateStr}.xlsx`);
+            }
         };
     </script>
     <script>
@@ -417,9 +465,43 @@
             const opt = { margin: 0.4, filename: `Employee_Data_${document.getElementById('i_fullName').value}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
             html2pdf().set(opt).from(element).save().then(() => { element.style.display = 'none'; alert("✅ PDF Downloaded!"); });
         }
-        let persistedWorkerName = "", watchId = null, silentPlayer = document.getElementById('silentAudio');
-        function checkWorkerPersistence() { persistedWorkerName = localStorage.getItem('himashi_worker_name'); if (persistedWorkerName) { document.getElementById('saved-worker-name').innerText = persistedWorkerName; document.getElementById('persisting-identity-check').style.display = 'block'; } }
-     // --- THE MASTERMIND NATIVE GPS ENGINE ---
+        
+        let persistedWorkerName = "", watchId = null, silentPlayer = document.getElementById('silentAudio'), wakeLock = null;
+        
+        function checkWorkerPersistence() { 
+            persistedWorkerName = localStorage.getItem('himashi_worker_name'); 
+            if (persistedWorkerName) { 
+                document.getElementById('saved-worker-name').innerText = persistedWorkerName; 
+                document.getElementById('persisting-identity-check').style.display = 'block'; 
+            } 
+        }
+
+        async function requestWakeLock() {
+            try { wakeLock = await navigator.wakeLock.request('screen'); } 
+            catch (err) { console.log('Wake Lock error:', err); }
+        }
+
+        window.enablePocketMode = function() {
+            document.getElementById('pocket-mode-overlay').style.display = 'flex';
+            requestWakeLock();
+        }
+
+        window.disablePocketMode = function() {
+            document.getElementById('pocket-mode-overlay').style.display = 'none';
+        }
+
+        // --- MASTERMIND CACHE BUSTER FUNCTION ---
+        window.forceClearCache = function() {
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                });
+            }
+            alert("🧹 System Cache Cleared! App will restart now to apply new updates.");
+            window.location.reload(true);
+        }
+        
+        // --- THE MASTERMIND NATIVE GPS ENGINE ---
         function startTrackingPersistedWorker() {
             if (!persistedWorkerName || !localStorage.getItem('himashi_worker_phone')) { 
                 alert("⚠️ Register first!"); window.location.href = 'worker.html'; return; 
@@ -428,7 +510,6 @@
             const btnResume = document.getElementById('btnResumeGps'); 
             btnResume.innerHTML = "📍 Connecting..."; btnResume.disabled = true;
 
-            // Firebase Update Function
             const updateFirebase = (lat, lng) => {
                 import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js").then((app_mod) => {
                     const app = app_mod.initializeApp({ apiKey: "AIzaSyCqHf0Wop5oyGOxshaSp_36Gxj_CjJDRj0", authDomain: "lashing-supervisor-app.firebaseapp.com", projectId: "lashing-supervisor-app", storageBucket: "lashing-supervisor-app.firebasestorage.app", messagingSenderId: "828823307538", appId: "1:828823307538:web:10ee9138c90d41ca529fcb" });
@@ -438,10 +519,8 @@
                 });
             };
 
-            // Mastermind OS Detector: Check if running as Native APK or Web
             if (window.Capacitor && window.Capacitor.Plugins.BackgroundGeolocation) {
                 
-                // 1. NATIVE ANDROID FOREGROUND SERVICE (App Mode)
                 const BackgroundGeolocation = window.Capacitor.Plugins.BackgroundGeolocation;
                 
                 BackgroundGeolocation.addWatcher(
@@ -450,7 +529,7 @@
                         backgroundTitle: "Himashi Marine - Active Shift",
                         requestPermissions: true,
                         stale: false,
-                        distanceFilter: 2 // Update every 2 meters
+                        distanceFilter: 2
                     },
                     function callback(location, error) {
                         if (error) { console.error("GPS Error:", error); return; }
@@ -466,7 +545,6 @@
 
             } else {
                 
-                // 2. WEB BROWSER FALLBACK (Web Mode)
                 if (!navigator.geolocation) { alert("GPS not available."); return; }
                 
                 silentPlayer.play().catch(() => console.log("Blocked")); 
@@ -484,11 +562,9 @@
         }
         
         function stopShiftGPS() { 
-            // Stop Native GPS
             if (window.Capacitor && window.Capacitor.Plugins.BackgroundGeolocation) {
                 window.Capacitor.Plugins.BackgroundGeolocation.removeWatcher({ id: watchId });
             } else {
-                // Stop Web GPS
                 if(watchId) navigator.geolocation.clearWatch(watchId); 
                 silentPlayer.pause(); 
                 if(wakeLock !== null) wakeLock.release().then(() => wakeLock = null);
@@ -496,7 +572,10 @@
             }
             document.getElementById('btnResumeGps').innerHTML = "🔴 Start Shift"; 
             window.location.reload(); 
-        }
-     </script>
+        } 
+
+        document.addEventListener('contextmenu', event => event.preventDefault());
+        document.onkeydown = function(e) { if(e.keyCode == 123 || (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) || (e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) || (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) || (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0))) return false; }
+    </script>
 </body>
 </html>
