@@ -32,7 +32,9 @@ jobs:
 
     - name: Build Native APK
       working-directory: ./android
-      run: ./gradlew assembleDebug
+      run: |
+        chmod +x ./gradlew
+        ./gradlew assembleDebug
 
     - name: Upload Final APK
       uses: actions/upload-artifact@v4
