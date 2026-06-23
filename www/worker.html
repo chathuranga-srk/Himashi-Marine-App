@@ -53,16 +53,14 @@
     </div>
 
     <script>
-        // generateQR check permission mulinma and redirect to worker.html y
         window.generateQR = function() {
             const name = document.getElementById('displayName').value.trim();
             const phone = document.getElementById('phoneNum').value.trim();
             if(!name || !phone) { alert("කරුණාකර නම සහ දුරකථන අංකය ඇතුළත් කරන්න!"); return; }
             
-            // THE MASTERMIND PERSISTENCE: Save to localStorage
             localStorage.setItem('himashi_worker_name', name);
             localStorage.setItem('himashi_worker_phone', phone);
-            localStorage.setItem('himashi_worker_role', 'Quay'); // Default role Quay y
+            localStorage.setItem('himashi_worker_role', 'Quay');
 
             const qrData = encodeURIComponent(`${name}|${phone}`);
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrData}`;
@@ -77,14 +75,48 @@
         }
 
         window.downloadQR = async function() {
-            const imgSrc = document.getElementById('qrImage').src;
-            const image = await fetch(imgSrc);
-            const imageBlog = await image.blob();
-            const imageURL = URL.createObjectURL(imageBlog);
-            
-            const link = document.createElement('a'); link.href = imageURL;
-            link.download = `Himashi_QR_${document.getElementById('displayName').value}.png`;
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            try {
+                const imgSrc = document.getElementById('qrImage').src;
+                const name = document.getElementById('displayName').value.trim();
+                
+                // Fetch image and convert to Base64
+                const response = await fetch(imgSrc);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                
+                reader.onloadend = async function() {
+                    const base64data = reader.result.split(',')[1];
+
+                    // Check if Native Android App
+                    if (window.Capacitor && window.Capacitor.Plugins.Filesystem) {
+                        const fileName = `Himashi_QR_${name.replace(/\s+/g, '_')}.png`;
+                        const result = await window.Capacitor.Plugins.Filesystem.writeFile({
+                            path: fileName,
+                            data: base64data,
+                            directory: 'CACHE'
+                        });
+
+                        // Share the QR Code image
+                        await window.Capacitor.Plugins.Share.share({
+                            title: 'My Himashi QR Code',
+                            text: `${name} ගේ QR Code එක`,
+                            url: result.uri
+                        });
+                    } else {
+                        // Fallback for Web/Browser
+                        const imageURL = URL.createObjectURL(blob);
+                        const link = document.createElement('a'); 
+                        link.href = imageURL;
+                        link.download = `Himashi_QR_${name}.png`;
+                        document.body.appendChild(link); 
+                        link.click(); 
+                        document.body.removeChild(link);
+                    }
+                }
+            } catch (error) {
+                alert("⚠️ QR Code download failed: " + error.message);
+            }
         }
     </script>
 </body>
